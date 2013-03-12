@@ -47,7 +47,7 @@ function Scenario {
 
 	Write-Verbose "`tScenario: $scenario"
 
-	$feature = Get-CurrentFeature
+	$feature = GetCurrentFeature
 	
 	$feature.scenarios.Push(@{
 		"name" = $scenario;
@@ -66,7 +66,7 @@ function Given {
         [Parameter(Position = 0)] [scriptblock] $script
     )
 
-	$scenario = Get-CurrentScenario
+	$scenario = GetCurrentScenario
 	
 	if ($script) {
 		$scenario.given += $script
@@ -79,7 +79,7 @@ function When {
         [Parameter(Position = 0)] [scriptblock] $script
     )
 
-	$scenario = Get-CurrentScenario
+	$scenario = GetCurrentScenario
 	
 	if ($script) {
 		$scenario.when += $script
@@ -92,7 +92,7 @@ function Then {
         [Parameter(Position = 0)] [scriptblock] $script
     )
 
-	$scenario = Get-CurrentScenario
+	$scenario = GetCurrentScenario
 	
 	if ($script) {
 		$scenario.then += $script
@@ -114,8 +114,11 @@ function Assert {
 function Invoke-Gwen {
     [CmdletBinding(SupportsShouldProcess = $true)]
     param (
-        [Parameter(Position = 0)] [string] $testPath
+        [Parameter(Position = 0)] $testPath,
+		[switch] $sequential
     )
+	
+	$failureCount = 0
 	
 	try {
 		$gwen.context.push(@{
@@ -124,81 +127,132 @@ function Invoke-Gwen {
 		})
 		
 		$context = $gwen.context.Peek()
-		
 		$verbose = $PSBoundParameters["Verbose"]
 		
 		if ($verbose -and $verbose -eq $true) {
 			$VerbosePreference = "Continue"
 		}
 		
-		Get-ChildItem -Path $testPath\* -Include *.feature.ps1 -Recurse | ForEach-Object {
-			. $_
-		}
-		
-		foreach ($feature in $context.features) {
-			foreach ($scenario in $feature.scenarios) {
-				foreach ($given in $scenario.given) {
-					try {
-						if ($scenario.errors.length -eq 0) {
-							$given.Invoke()
-						}
-					} catch {
-						$scenario.errors += $_
-					}
-				}
+		if ($testPath.PSIsContainer) {
+			## A folder has been passed so load all the tests.
+			Get-ChildItem -Path $testPath\* -Include *.feature.ps1 -Recurse | ForEach-Object {
+				. $_
 			}
+		} else {
+			## A single test has been passed so just run it.
+			. $testPath.FullName
 		}
 		
-		foreach ($feature in $context.features) {
-			foreach ($scenario in $feature.scenarios) {
-				foreach ($when in $scenario.when) {
-					try {
-						if ($scenario.errors.length -eq 0) {
-							$when.Invoke()
-						}
-					} catch {
-						$scenario.errors += $_
-					}
-				}
-			}
+		if ($sequential) {
+			RunSequential $context
+		} else {
+			RunBatch $context
 		}
-		
-		foreach ($feature in $context.features) {
-			foreach ($scenario in $feature.scenarios) {
-				foreach ($then in $scenario.then) {
-					try {
-						if ($scenario.errors.length -eq 0) {
-							$then.Invoke()
-						}
-					} catch {
-						$scenario.errors += $_
-					}
-				}
-			}
-		}
-		
 	} finally {
 		$context = $gwen.context.Pop()
 		$VerbosePreference = $context.originalVerbosePreference
 	}
+	
+	return $context.failureCount
 }
 
-function Get-CurrentContext {
+## Internals
+
+function GetCurrentContext {
 	return $gwen.context.Peek()
 }
 
-function Get-CurrentFeature {
+function GetCurrentFeature {
 	return $gwen.context.Peek().features.Peek()
 }
 
-function Get-CurrentScenario {
+function GetCurrentScenario {
 	return $gwen.context.Peek().features.Peek().scenarios.Peek()
+}
+
+function RunBatch {
+    param (
+        [Parameter(Position = 0)] $context
+	)
+	
+	foreach ($feature in $context.features) {
+		foreach ($scenario in $feature.scenarios) {
+			foreach ($given in $scenario.given) {
+				try {
+					if ($scenario.errors.length -eq 0) {
+						$given.Invoke()
+					}
+				} catch {
+					$context.failureCount += 1
+					$scenario.errors += $_
+				}
+			}
+		}
+	}
+	
+	foreach ($feature in $context.features) {
+		foreach ($scenario in $feature.scenarios) {
+			foreach ($when in $scenario.when) {
+				try {
+					if ($scenario.errors.length -eq 0) {
+						$when.Invoke()
+					}
+				} catch {
+					$context.failureCount += 1
+					$scenario.errors += $_
+				}
+			}
+		}
+	}
+	
+	foreach ($feature in $context.features) {
+		foreach ($scenario in $feature.scenarios) {
+			foreach ($then in $scenario.then) {
+				try {
+					if ($scenario.errors.length -eq 0) {
+						$then.Invoke()
+					}
+				} catch {
+					$context.failureCount += 1
+					$scenario.errors += $_
+				}
+			}
+		}
+	}		
+}
+
+function RunSequential {
+    param (
+        [Parameter(Position = 0)] $context
+	)
+	
+	foreach ($feature in $context.features) {
+		foreach ($scenario in $feature.scenarios) {
+			try {
+				foreach ($given in $scenario.given) {
+					$given.Invoke()
+				}
+
+				foreach ($when in $scenario.when) {
+					$when.Invoke()
+				}
+
+				foreach ($then in $scenario.then) {
+					$then.Invoke()
+				}
+			} catch {
+				$context.failureCount += 1
+				$scenario.errors += $_
+			}
+		}
+	}		
 }
 
 $script:gwen = @{
     version = "0.1.0";
     context = New-Object System.Collections.Stack;
     passed = $false;
+	failureCount = 0;
 }
 
 Export-ModuleMember -Function Invoke-Gwen, Feature, Scenario, Given, When, Then, Assert -Variable gwen

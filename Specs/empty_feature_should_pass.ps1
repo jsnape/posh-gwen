@@ -1,0 +1,2 @@
+﻿Feature "Empty feature" {
+}
