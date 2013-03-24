@@ -18,11 +18,61 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 # THE SOFTWARE.
 
-$scriptRoot = Split-Path $MyInvocation.MyCommand.Path -Parent
+[CmdletBinding()]
+Param (
+    [Parameter(Position = 0, Mandatory = $true)] [string] $suitePath,
+    [Parameter(Position = 1, Mandatory = $false)] [string] $filter = "*.ps1"
+)
 
-Remove-Module gwen -ErrorAction SilentlyContinue
-Import-Module (Join-Path $scriptRoot gwen.psm1)
+try {
+    $oldVerbosePreference = $VerbosePreference
 
-Set-Location $scriptRoot
+    $verbose = $PSBoundParameters["Verbose"]
 
-Invoke-Gwen (Join-Path $scriptRoot Tests) -Verbose
+    if ($verbose -and $verbose -eq $true) {
+        $VerbosePreference = "Continue"
+    }
+
+    Write-Host "Running posh-gwen tests from $suitePath" -ForegroundColor Green
+
+    $scriptPath = Split-Path $MyInvocation.MyCommand.Path -Parent
+    $suitePath = Resolve-Path $suitePath
+
+    Remove-Module gwen -ErrorAction SilentlyContinue -Verbose:$false
+    Import-Module (Join-Path $scriptPath gwen.psm1) -ErrorAction Stop -Verbose:$false
+
+    Push-Location $suitePath
+
+    $results = @()
+    $failureCount = 0
+
+    Get-ChildItem $suitePath -Filter $filter | Invoke-Gwen | % {
+        $results += $_
+        
+        ## This supports the internal testing framework.
+        if ($_.File.EndsWith("_should_fail.ps1")) {
+            $_.Failed = -not $_.Failed
+        }
+        
+        if ($_.Failed) {
+            $failureCount += 1
+            Write-Host "F" -ForeGroundColor Red -NoNewLine
+        } else {
+            Write-Host "." -ForeGroundColor Green -NoNewLine
+        }
+    }
+
+    Write-Host ""
+
+    $results | % {
+        if ($_.Failed) {
+            Write-Host "$($_.feature) - $($_.scenario)...failed" -ForegroundColor Red
+            $_.Errors | % { Write-Host $_ -ForegroundColor Red }
+        } else {
+            Write-Host "$($_.feature) - $($_.scenario)...passed" -ForegroundColor Green
+        }
+    }
+} finally {
+    $VerbosePreference = $oldVerbosePreference 
+    Pop-Location
+}

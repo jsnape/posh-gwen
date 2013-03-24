@@ -29,41 +29,6 @@ if ($verbose -and $verbose -eq $true) {
 	$VerbosePreference = "Continue"
 }
 
-Write-Host "Running posh-gwen specification tests" -ForegroundColor Green
-
-$scriptPath = Split-Path $MyInvocation.MyCommand.Path -Parent
-$specPath = Join-Path $scriptPath Specs
-
-Remove-Module gwen -ErrorAction SilentlyContinue -Verbose:$false
-Import-Module (Join-Path $scriptPath gwen.psm1) -ErrorAction Stop -Verbose:$false
-
-$results = @()
-$failureCount = 0
-
-Get-ChildItem $specPath -Filter *.ps1 | Invoke-Gwen | % {
-	$results += $_
-	
-	if ($_.File.EndsWith("_should_fail.ps1")) {
-		$_.Failed = -not $_.Failed
-	}
-	
-	if ($_.Failed) {
-		$failureCount += 1
-		Write-Host "F" -ForeGroundColor Red -NoNewLine
-	} else {
-		Write-Host "." -ForeGroundColor Green -NoNewLine
-	}
-}
-
-Write-Host ""
-
-$results | % {
-	if ($_.Failed) {
-		Write-Host "$($_.feature) - $($_.scenario)...failed" -ForegroundColor Red
-		$_.Errors | % { Write-Host $_ -ForegroundColor Red }
-	} else {
-		Write-Host "$($_.feature) - $($_.scenario)...passed" -ForegroundColor Green
-	}
-}
+.\Gwen -suitePath .\Specs
 
 $VerbosePreference = $oldVerbosePreference 
