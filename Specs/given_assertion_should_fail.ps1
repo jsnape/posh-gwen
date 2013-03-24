@@ -1,7 +1,7 @@
-﻿Feature "Empty feature" {
+﻿Feature "Simple feature" {
     Scenario "Just a Given" {
         Given {
-            Assert $false "Always fails"
+            Assert-That $false "Always fails"
         }
     }
 }

@@ -18,40 +18,52 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 # THE SOFTWARE.
 
+[CmdletBinding()]
+Param ()
+
+$oldVerbosePreference = $VerbosePreference
+
+$verbose = $PSBoundParameters["Verbose"]
+
+if ($verbose -and $verbose -eq $true) {
+	$VerbosePreference = "Continue"
+}
+
 Write-Host "Running posh-gwen specification tests" -ForegroundColor Green
 
 $scriptPath = Split-Path $MyInvocation.MyCommand.Path -Parent
+$specPath = Join-Path $scriptPath Specs
 
-Remove-Module gwen -ErrorAction SilentlyContinue
-Import-Module (Join-Path $scriptPath gwen.psm1)
+Remove-Module gwen -ErrorAction SilentlyContinue -Verbose:$false
+Import-Module (Join-Path $scriptPath gwen.psm1) -ErrorAction Stop -Verbose:$false
 
-$specs = Get-ChildItem (Join-Path $scriptPath Specs) -Filter *.ps1
+$results = @()
+$failureCount = 0
 
-foreach ($spec in $specs) {
-	try {
-		$result = $true
-
-		$failureCount = Invoke-Gwen -testPath $spec
-		
-		if ($failureCount -gt 0) {
-			$result = $false
-		}
-	}
-	catch {
-		Write-Host $_.Exception -ForegroundColor Red
-		$result = $false
+Get-ChildItem $specPath -Filter *.ps1 | Invoke-Gwen | % {
+	$results += $_
+	
+	if ($_.File.EndsWith("_should_fail.ps1")) {
+		$_.Failed = -not $_.Failed
 	}
 	
-	if ($spec.BaseName.EndsWith("_should_fail")) {
-		$result = -not $result
-	}
-	
-	if ($result) {
-		Write-Host "." -ForeGroundColor Green -NoNewLine
-	}
-	else {
+	if ($_.Failed) {
+		$failureCount += 1
 		Write-Host "F" -ForeGroundColor Red -NoNewLine
+	} else {
+		Write-Host "." -ForeGroundColor Green -NoNewLine
 	}
 }
 
 Write-Host ""
+
+$results | % {
+	if ($_.Failed) {
+		Write-Host "$($_.feature) - $($_.scenario) failed" -ForegroundColor Red
+		$_.Errors | % { Write-Host $_ -ForegroundColor Red }
+	} else {
+		Write-Host "$($_.feature) - $($_.scenario) passes" -ForegroundColor Green
+	}
+}
+
+$VerbosePreference = $oldVerbosePreference 
