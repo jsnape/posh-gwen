@@ -59,10 +59,10 @@ Write-Host ""
 
 $results | % {
 	if ($_.Failed) {
-		Write-Host "$($_.feature) - $($_.scenario) failed" -ForegroundColor Red
+		Write-Host "$($_.feature) - $($_.scenario)...failed" -ForegroundColor Red
 		$_.Errors | % { Write-Host $_ -ForegroundColor Red }
 	} else {
-		Write-Host "$($_.feature) - $($_.scenario) passes" -ForegroundColor Green
+		Write-Host "$($_.feature) - $($_.scenario)...passed" -ForegroundColor Green
 	}
 }
 
