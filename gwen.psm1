@@ -104,11 +104,11 @@ function Assert-Equal {
     param (
         [Parameter(Position = 0)] $expected,
         [Parameter(Position = 1)] $actual,
-		[Parameter(Position = 2)] [string] $messsage = "Test failed"
+		[Parameter(Position = 2)] [string] $message = "Test failed"
     )
 
 	if ($expected -ne $actual) {
-		throw ("Assert " + $message)
+		throw ("Assert <<$expected>> not equal to <<$actual>> " + $message)
 	}
 }
 
