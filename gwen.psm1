@@ -90,7 +90,7 @@ function Then {
 function Assert-That {
     [CmdletBinding()]
     param (
-        [Parameter(Position = 0)] [boolean] $condition,
+        [Parameter(Position = 0)] $condition,
 		[Parameter(Position = 1)] [string] $messsage = "Test failed"
     )
 
@@ -110,6 +110,31 @@ function Assert-Equal {
 	if ($expected -ne $actual) {
 		throw ("Assert <<$expected>> not equal to <<$actual>> " + $message)
 	}
+}
+
+function Should-Fail {
+    [CmdletBinding()]
+    param (
+        [Parameter(Position = 0)] [scriptblock] $action
+    )
+    
+    try {
+        & $action
+    }
+    catch {
+        return
+    }
+    
+    Fail-Test
+}
+
+function Fail-Test {
+    [CmdletBinding()]
+    param (
+		[Parameter(Position = 1)] [string] $message = "Test failed"
+    )
+
+	throw ($message)
 }
 
 function Invoke-Gwen {
