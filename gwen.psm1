@@ -91,7 +91,7 @@ function Assert-That {
     [CmdletBinding()]
     param (
         [Parameter(Position = 0)] $condition,
-		[Parameter(Position = 1)] [string] $messsage = "Test failed"
+		[Parameter(Position = 1)] [string] $messsage = "test failed"
     )
 
 	if (-not $condition) {
@@ -104,7 +104,7 @@ function Assert-Equal {
     param (
         [Parameter(Position = 0)] $expected,
         [Parameter(Position = 1)] $actual,
-		[Parameter(Position = 2)] [string] $message = "Test failed"
+		[Parameter(Position = 2)] [string] $message = ""
     )
 
 	if ($expected -ne $actual) {
@@ -184,7 +184,6 @@ function Invoke-Gwen {
 					Write-Output $result
 				}
 			}
-			
 		} finally {
 			Pop-Context
 		}
