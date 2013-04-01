@@ -39,21 +39,76 @@ There are a number of suitable domains to use but any with high cardinality are 
 Tests are written in Powershell and can use just about any Powershell feature. The basic test looks like:
 
 ```Powershell
+## A feature is the basic unit of testing.
 Feature "Batch file generation" {
+	## A feature can contain many scenarios.
 	Scenario "Generate a file" {
 		Given {
+			## Arrange the test context.
 		}
 		
 		When {
+			## Act
+			## e.g. Kick of an import and wait for it to complete.
 		}
 
 		Then {
+			## Assert the outcome.
 		}
 	}
 }
 ```
 
 All parts are optional but the hierarchy _Feature > Scenario > Given, When, Then_ must be maintained. If Feature or Scenario is missing then the test will just be ignored.
+
+## Variable Scope ##
+
+If you want to access variables in parent scopes such as at the feature or scenario level you need to create a closure since the given, when and then blocks are executed much later than the feature or scenario blocks.
+
+Powershell doesn't automatically create closures for every script block so you must add a call to _GetNewClosure()_ after each block. For example:
+
+```Powershell
+Feature "Closure support" {
+	$customerFile = "customers.csv"
+
+	Scenario "Access a variable" {
+		[ref] $count = 0
+
+		Given {
+			## Customer records
+            $customers = @(
+                @{ CustomerId = 1; Name = "John Smith"; }
+                @{ CustomerId = 2; Name = "Robert Johnson"; }
+            )
+
+            ## Write the records to the csv file.
+            $customers | 
+                % { Write-Output (New-Object PSObject -Property $_) } | 
+                Export-Csv -NoTypeInformation -Path $customerFile	
+		}.GetNewClosure()
+
+        When {
+            $value = 0;
+            ## Count the records in the file.
+            Import-Csv -Path $customerFile | % { $value += 1 }
+            
+            ## Update the ref value with the count.
+            $count.value = $value
+            
+		}.GetNewClosure()
+        
+        Then {
+            ## Check that the file contained the right number of rows.
+            Assert-Equal 2 $count.value
+            
+            ## Clean up.
+            Remove-Item $customerFile
+        }.GetNewClosure()	
+	}
+}
+```
+
+NB: if you want to modify a variable you should declare it as _[ref]_ since closures copy by value.
 
 # Running Tests #
 
@@ -65,4 +120,36 @@ PS> .\gwen.ps1 -suitePath .\Specs
 
 If you want more control over which tests are run and how the output is processed you need to Invoke-Gwen directly.
 
-TODO TODO TODO.
+The contents of gwen.ps1 are a good guide to calling Invoke-Gwen directly. Basically you should pipe the tests you are interested in to the Invoke-Gwen function which will in turn output a set of test results for you to process:
+
+```Powershell
+$results = @()
+$failureCount = 0
+
+Get-ChildItem $suitePath -Filter $filter | Invoke-Gwen | % {
+    $results += $_
+    
+    ## This supports the internal testing framework.
+    if ($_.File.EndsWith("_should_fail.ps1")) {
+        $_.Failed = -not $_.Failed
+    }
+    
+    if ($_.Failed) {
+        $failureCount += 1
+        Write-Host "F" -ForeGroundColor Red -NoNewLine
+    } else {
+        Write-Host "." -ForeGroundColor Green -NoNewLine
+    }
+}
+
+Write-Host ""
+
+$results | % {
+    if ($_.Failed) {
+        Write-Host "$($_.feature) - $($_.scenario)...failed" -ForegroundColor Red
+        $_.Errors | % { Write-Host $_ -ForegroundColor Red }
+    } else {
+        Write-Host "$($_.feature) - $($_.scenario)...passed" -ForegroundColor Green
+    }
+}
+```
