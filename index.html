@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html>
+
+  <head>
+    <meta charset='utf-8' />
+    <meta http-equiv="X-UA-Compatible" content="chrome=1" />
+    <meta name="description" content="Posh-gwen : Powershell behaviour driven testing of batch systems." />
+
+    <link rel="stylesheet" type="text/css" media="screen" href="stylesheets/stylesheet.css">
+
+    <title>Posh-gwen</title>
+  </head>
+
+  <body>
+
+    <!-- HEADER -->
+    <div id="header_wrap" class="outer">
+        <header class="inner">
+          <a id="forkme_banner" href="https://github.com/jsnape/posh-gwen">View on GitHub</a>
+
+          <h1 id="project_title">Posh-gwen</h1>
+          <h2 id="project_tagline">Powershell behaviour driven testing of batch systems.</h2>
+
+            <section id="downloads">
+              <a class="zip_download_link" href="https://github.com/jsnape/posh-gwen/zipball/master">Download this project as a .zip file</a>
+              <a class="tar_download_link" href="https://github.com/jsnape/posh-gwen/tarball/master">Download this project as a tar.gz file</a>
+            </section>
+        </header>
+    </div>
+
+    <!-- MAIN CONTENT -->
+    <div id="main_content_wrap" class="outer">
+      <section id="main_content" class="inner">
+        <h1>posh-gwen</h1>
+
+<p>Powershell behaviour driven testing of batch systems.</p>
+
+<h1>Overview</h1>
+
+<p>It is difficult to test batch systems using modern test frameworks such as <a href="http://www.specflow.org">Specflow</a> or <a href="http://www.fitnesse.org/">FitNesse</a> because of the simple rule that good tests should be isolated from one another. All these frameworks run tests in sequence:</p>
+
+<ul>
+<li>do something</li>
+<li>check something</li>
+<li>clean up</li>
+<li>move on to the next test</li>
+</ul><p>For this to be successful each test has to run very fast. Most batch processing systems are optimised for bulk processing of data. They may take tens of seconds to run end to end even with a single row of data so running hundreds of tests independently can take hours.</p>
+
+<p>This framework is designed to break the rule of sequential test execution. All tests are run in parallel by phase.</p>
+
+<h1>Workflow</h1>
+
+<p>The best way to test batch processing is for a known input to contain many test cases. The batch is run loading all data at once. Finally a number of queries are executed against the resulting system. So for example a data warehouse might load a number of source files using an <a href="http://en.wikipedia.org/wiki/Extract,_transform,_load">ETL framework</a> such as <a href="http://msdn.microsoft.com/en-us/library/ms141026.aspx">SQL Server Integration Services</a>. Once loaded the data warehouse can be queried to check that expected values exist in the final system.</p>
+
+<h1>Test Isolation</h1>
+
+<p>It is still important to ensure that individual tests are isolated from each other or else changes in one might cause a number of others to fail or become invalid.</p>
+
+<p>The best way to do this for batch processing is by <strong>data isolation</strong> - that is to carve up data domains in a way that only a single test uses data from that domain. Then verifications of the result force the query to execute against that test specific sub-domain.</p>
+
+<p>There are a number of suitable domains to use but any with high cardinality are best:</p>
+
+<ul>
+<li>
+<strong>Dates</strong> - each day is a single test (or blocks of days, weeks, years etc. for those tests that need to span days).</li>
+<li>
+<strong>Transaction identifiers</strong> - use a map of IDs to test cases or in the case of strings prefix the transaction id with the test case number.</li>
+<li>
+<strong>Business keys</strong> - for entities such as customer or product there is usually an ID field used as the business key; use the same methods as transaction identifiers.</li>
+<li>
+<strong>Custom attributes</strong> - if none of the above will work then you might consider adding an additional attribute to the source data which is passed through the batch system. Obviously this is not a preferred solution single you will have to modify your system.</li>
+<li>Combinations of the above - sometimes depending on where you need to validate you might need multiple solutions.</li>
+</ul><h1>Writing Tests</h1>
+
+<p>Tests are written in Powershell and can use just about any Powershell feature. The basic test looks like:</p>
+
+<div class="highlight"><pre><span class="c">## A feature is the basic unit of testing.</span>
+<span class="n">Feature</span> <span class="s2">"Batch file generation"</span> <span class="p">{</span>
+    <span class="c">## A feature can contain many scenarios.</span>
+    <span class="n">Scenario</span> <span class="s2">"Generate a file"</span> <span class="p">{</span>
+        <span class="n">Given</span> <span class="p">{</span>
+            <span class="c">## Arrange the test context.</span>
+        <span class="p">}</span>
+
+        <span class="n">When</span> <span class="p">{</span>
+            <span class="c">## Act</span>
+            <span class="c">## e.g. Kick of an import and wait for it to complete.</span>
+        <span class="p">}</span>
+
+        <span class="n">Then</span> <span class="p">{</span>
+            <span class="c">## Assert the outcome.</span>
+        <span class="p">}</span>
+    <span class="p">}</span>
+<span class="p">}</span>
+</pre></div>
+
+<p>All parts are optional but the hierarchy <em>Feature &gt; Scenario &gt; Given, When, Then</em> must be maintained. If Feature or Scenario is missing then the test will just be ignored.</p>
+
+<h2>Variable Scope</h2>
+
+<p>If you want to access variables in parent scopes such as at the feature or scenario level you need to create a closure since the given, when and then blocks are executed much later than the feature or scenario blocks.</p>
+
+<p>Powershell doesn't automatically create closures for every script block so you must add a call to <em>GetNewClosure()</em> after each block. For example:</p>
+
+<div class="highlight"><pre><span class="n">Feature</span> <span class="s2">"Closure support"</span> <span class="p">{</span>
+    <span class="nv">$customerFile</span> <span class="p">=</span> <span class="s2">"customers.csv"</span>
+
+    <span class="n">Scenario</span> <span class="s2">"Access a variable"</span> <span class="p">{</span>
+        <span class="no">[ref]</span> <span class="nv">$count</span> <span class="p">=</span> <span class="n">0</span>
+
+        <span class="n">Given</span> <span class="p">{</span>
+            <span class="c">## Customer records</span>
+            <span class="nv">$customers</span> <span class="p">=</span> <span class="err">@</span><span class="p">(</span>
+                <span class="err">@</span><span class="p">{</span> <span class="n">CustomerId</span> <span class="p">=</span> <span class="n">1</span><span class="err">;</span> <span class="n">Name</span> <span class="p">=</span> <span class="s2">"John Smith"</span><span class="err">;</span> <span class="p">}</span>
+                <span class="err">@</span><span class="p">{</span> <span class="n">CustomerId</span> <span class="p">=</span> <span class="n">2</span><span class="err">;</span> <span class="n">Name</span> <span class="p">=</span> <span class="s2">"Robert Johnson"</span><span class="err">;</span> <span class="p">}</span>
+            <span class="p">)</span>
+
+            <span class="c">## Write the records to the csv file.</span>
+            <span class="nv">$customers</span> <span class="p">|</span> 
+                <span class="p">%</span> <span class="p">{</span> <span class="nb">Write-Output</span> <span class="p">(</span><span class="nb">New-Object</span> <span class="n">PSObject</span> <span class="n">-Property</span> <span class="nv">$_</span><span class="p">)</span> <span class="p">}</span> <span class="p">|</span> 
+                <span class="nb">Export-Csv</span> <span class="n">-NoTypeInformation</span> <span class="n">-Path</span> <span class="nv">$customerFile</span>   
+        <span class="p">}.</span><span class="n">GetNewClosure</span><span class="p">()</span>
+
+        <span class="n">When</span> <span class="p">{</span>
+            <span class="nv">$value</span> <span class="p">=</span> <span class="n">0</span><span class="err">;</span>
+            <span class="c">## Count the records in the file.</span>
+            <span class="nb">Import-Csv</span> <span class="n">-Path</span> <span class="nv">$customerFile</span> <span class="p">|</span> <span class="p">%</span> <span class="p">{</span> <span class="nv">$value</span> <span class="p">+=</span> <span class="n">1</span> <span class="p">}</span>
+
+            <span class="c">## Update the ref value with the count.</span>
+            <span class="nv">$count</span><span class="p">.</span><span class="n">value</span> <span class="p">=</span> <span class="nv">$value</span>
+
+        <span class="p">}.</span><span class="n">GetNewClosure</span><span class="p">()</span>
+
+        <span class="n">Then</span> <span class="p">{</span>
+            <span class="c">## Check that the file contained the right number of rows.</span>
+            <span class="n">Assert-Equal</span> <span class="n">2</span> <span class="nv">$count</span><span class="p">.</span><span class="n">value</span>
+
+            <span class="c">## Clean up.</span>
+            <span class="nb">Remove-Item</span> <span class="nv">$customerFile</span>
+        <span class="p">}.</span><span class="n">GetNewClosure</span><span class="p">()</span>   
+    <span class="p">}</span>
+<span class="p">}</span>
+</pre></div>
+
+<p>NB: if you want to modify a variable you should declare it as <em>[ref]</em> since closures copy by value.</p>
+
+<h1>Running Tests</h1>
+
+<p>Most of posh-gwen is contained in a Powershell module but there is also a folder suite runner that will pipe all the .ps1 files in a specified folder to the test runner:</p>
+
+<div class="highlight"><pre><span class="n">PS</span><span class="p">&gt;</span> <span class="p">.\</span><span class="n">gwen</span><span class="p">.</span><span class="n">ps1</span> <span class="n">-suitePath</span> <span class="p">.\</span><span class="n">Specs</span>
+</pre></div>
+
+<p>If you want more control over which tests are run and how the output is processed you need to Invoke-Gwen directly.</p>
+
+<p>The contents of gwen.ps1 are a good guide to calling Invoke-Gwen directly. Basically you should pipe the tests you are interested in to the Invoke-Gwen function which will in turn output a set of test results for you to process:</p>
+
+<div class="highlight"><pre><span class="nv">$results</span> <span class="p">=</span> <span class="err">@</span><span class="p">()</span>
+<span class="nv">$failureCount</span> <span class="p">=</span> <span class="n">0</span>
+
+<span class="nb">Get-ChildItem</span> <span class="nv">$suitePath</span> <span class="n">-Filter</span> <span class="nv">$filter</span> <span class="p">|</span> <span class="nb">Invoke-Gwen</span> <span class="p">|</span> <span class="p">%</span> <span class="p">{</span>
+    <span class="nv">$results</span> <span class="p">+=</span> <span class="nv">$_</span>
+
+    <span class="c">## This supports the internal testing framework.</span>
+    <span class="k">if</span> <span class="p">(</span><span class="nv">$_</span><span class="p">.</span><span class="n">File</span><span class="p">.</span><span class="n">EndsWith</span><span class="p">(</span><span class="s2">"_should_fail.ps1"</span><span class="p">))</span> <span class="p">{</span>
+        <span class="nv">$_</span><span class="p">.</span><span class="n">Failed</span> <span class="p">=</span> <span class="o">-not</span> <span class="nv">$_</span><span class="p">.</span><span class="n">Failed</span>
+    <span class="p">}</span>
+
+    <span class="k">if</span> <span class="p">(</span><span class="nv">$_</span><span class="p">.</span><span class="n">Failed</span><span class="p">)</span> <span class="p">{</span>
+        <span class="nv">$failureCount</span> <span class="p">+=</span> <span class="n">1</span>
+        <span class="nb">Write-Host</span> <span class="s2">"F"</span> <span class="n">-ForeGroundColor</span> <span class="n">Red</span> <span class="n">-NoNewLine</span>
+    <span class="p">}</span> <span class="k">else</span> <span class="p">{</span>
+        <span class="nb">Write-Host</span> <span class="s2">"."</span> <span class="n">-ForeGroundColor</span> <span class="n">Green</span> <span class="n">-NoNewLine</span>
+    <span class="p">}</span>
+<span class="p">}</span>
+
+<span class="nb">Write-Host</span> <span class="s2">""</span>
+
+<span class="nv">$results</span> <span class="p">|</span> <span class="p">%</span> <span class="p">{</span>
+    <span class="k">if</span> <span class="p">(</span><span class="nv">$_</span><span class="p">.</span><span class="n">Failed</span><span class="p">)</span> <span class="p">{</span>
+        <span class="nb">Write-Host</span> <span class="s2">"</span><span class="si">$(</span><span class="err">$</span><span class="si">_.feature)</span><span class="s2"> - </span><span class="si">$(</span><span class="err">$</span><span class="si">_.scenario)</span><span class="s2">...failed"</span> <span class="n">-ForegroundColor</span> <span class="n">Red</span>
+        <span class="nv">$_</span><span class="p">.</span><span class="n">Errors</span> <span class="p">|</span> <span class="p">%</span> <span class="p">{</span> <span class="nb">Write-Host</span> <span class="nv">$_</span> <span class="n">-ForegroundColor</span> <span class="n">Red</span> <span class="p">}</span>
+    <span class="p">}</span> <span class="k">else</span> <span class="p">{</span>
+        <span class="nb">Write-Host</span> <span class="s2">"</span><span class="si">$(</span><span class="err">$</span><span class="si">_.feature)</span><span class="s2"> - </span><span class="si">$(</span><span class="err">$</span><span class="si">_.scenario)</span><span class="s2">...passed"</span> <span class="n">-ForegroundColor</span> <span class="n">Green</span>
+    <span class="p">}</span>
+<span class="p">}</span>
+</pre></div>
+      </section>
+    </div>
+
+    <!-- FOOTER  -->
+    <div id="footer_wrap" class="outer">
+      <footer class="inner">
+        <p class="copyright">Posh-gwen maintained by <a href="https://github.com/jsnape">jsnape</a></p>
+        <p>Published with <a href="http://pages.github.com">GitHub Pages</a></p>
+      </footer>
+    </div>
+
+    
+
+  </body>
+</html>
